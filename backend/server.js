@@ -6,31 +6,64 @@ const cors = require('cors');
 const app = express();
 const server = http.createServer(app);
 
-// CORS configuration
+// Enhanced CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || '*',
-  methods: ['GET', 'POST'],
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'https://anony-chat-one.vercel.app',
+      'http://localhost:5173',
+      'http://localhost:3000'
+    ];
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
+  optionsSuccessStatus: 200
 };
 
-const io = socketIo(server, {
-  cors: corsOptions
-});
-
-// Middleware
+// Apply CORS to all routes
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// Handle preflight requests for all routes
+app.options('*', cors(corsOptions));
+
+const io = socketIo(server, {
+  cors: {
+    origin: [
+      'https://anony-chat-one.vercel.app',
+      'http://localhost:5173',
+      'http://localhost:3000'
+    ],
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
+});
 
 // Environment variables
 const PORT = process.env.PORT || 3001;
 const CHAT_ROOM_PASSCODE = process.env.CHAT_ROOM_PASSCODE || 'secret123';
 
-// Store connected clients (in-memory only)
+// Store connected clients
 const connectedClients = new Map();
 const typingUsers = new Map();
 
 // Authentication endpoint
 app.post('/api/login', (req, res) => {
+  // Set CORS headers explicitly for this endpoint
+  res.header('Access-Control-Allow-Origin', 'https://anony-chat-one.vercel.app');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
   const { passphrase } = req.body;
   
   if (!passphrase) {
@@ -55,10 +88,22 @@ app.post('/api/login', (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
+  res.header('Access-Control-Allow-Origin', 'https://anony-chat-one.vercel.app');
   res.json({ 
     status: 'ok', 
     message: 'Server is running',
-    connectedClients: connectedClients.size
+    connectedClients: connectedClients.size,
+    cors: 'Enabled for anony-chat-one.vercel.app'
+  });
+});
+
+// Test endpoint to verify CORS
+app.get('/api/test-cors', (req, res) => {
+  res.header('Access-Control-Allow-Origin', 'https://anony-chat-one.vercel.app');
+  res.json({ 
+    message: 'CORS is working!',
+    timestamp: new Date().toISOString(),
+    allowedOrigin: 'https://anony-chat-one.vercel.app'
   });
 });
 
@@ -66,10 +111,8 @@ app.get('/api/health', (req, res) => {
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
   
-  // Generate a random color for the user's messages
   const userColor = `hsl(${Math.floor(Math.random() * 360)}, 70%, 65%)`;
   
-  // Store client info
   connectedClients.set(socket.id, {
     id: socket.id,
     color: userColor,
@@ -77,10 +120,8 @@ io.on('connection', (socket) => {
     alias: `User${Math.floor(1000 + Math.random() * 9000)}`
   });
 
-  // Send current user count to all clients
   io.emit('user count', connectedClients.size);
 
-  // Notify others about new user
   socket.broadcast.emit('user joined', {
     id: socket.id,
     message: 'A new user joined the chat',
@@ -92,7 +133,6 @@ io.on('connection', (socket) => {
     try {
       const { message, alias, clientId } = data;
       
-      // Validate message
       if (!message || message.trim() === '') {
         socket.emit('error', { message: 'Message cannot be empty' });
         return;
@@ -103,14 +143,12 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Update client alias if provided
       const client = connectedClients.get(socket.id);
       if (client && alias) {
         client.alias = alias;
         connectedClients.set(socket.id, client);
       }
 
-      // Prepare message data
       const messageData = {
         id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
         message: message.trim(),
@@ -120,7 +158,6 @@ io.on('connection', (socket) => {
         color: client?.color || userColor
       };
 
-      // Broadcast to all clients
       io.emit('chat message', messageData);
       console.log(`Message broadcast from ${messageData.alias}: ${messageData.message}`);
 
@@ -140,7 +177,6 @@ io.on('connection', (socket) => {
       typingUsers.delete(socket.id);
     }
 
-    // Broadcast typing status to other users
     socket.broadcast.emit('user typing', {
       isTyping,
       alias,
@@ -161,24 +197,18 @@ io.on('connection', (socket) => {
   socket.on('disconnect', (reason) => {
     console.log(`User disconnected: ${socket.id} - Reason: ${reason}`);
     
-    // Remove from typing users
     typingUsers.delete(socket.id);
     
-    // Notify others about user leaving
     socket.broadcast.emit('user left', {
       id: socket.id,
       message: 'A user left the chat',
       timestamp: new Date().toISOString()
     });
     
-    // Remove from connected clients
     connectedClients.delete(socket.id);
-    
-    // Update user count
     io.emit('user count', connectedClients.size);
   });
 
-  // Handle errors
   socket.on('error', (error) => {
     console.error(`Socket error for ${socket.id}:`, error);
   });
@@ -187,11 +217,10 @@ io.on('connection', (socket) => {
 // Start server
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🔧 CORS enabled for: ${process.env.FRONTEND_URL || 'all origins'}`);
+  console.log(`🔧 CORS enabled for: https://anony-chat-one.vercel.app`);
   console.log(`🔐 Passphrase protection: ${CHAT_ROOM_PASSCODE !== 'secret123' ? 'Custom' : 'Default'}`);
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
   server.close(() => {

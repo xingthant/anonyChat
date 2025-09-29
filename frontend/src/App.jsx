@@ -325,7 +325,7 @@ function App() {
           
           <div className="header-right">
             <div className="alias-input-container">
-              <span className="alias-label">Your alias:</span>
+              <span className="alias-label">Your fake name:</span>
               <input
                 type="text"
                 value={alias}
@@ -462,8 +462,8 @@ function App() {
               </span>
               <span className="security-divider">•</span>
               <span className="security-item">
-                <span>⏰</span>
-                <span>Ephemeral</span>
+                <span>@</span>
+                <span>Coded By Xerlok</span>
               </span>
             </div>
           </div>

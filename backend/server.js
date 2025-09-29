@@ -6,44 +6,19 @@ const cors = require('cors');
 const app = express();
 const server = http.createServer(app);
 
-// Enhanced CORS configuration
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      'https://anony-chat-one.vercel.app',
-      'http://localhost:5173',
-      'http://localhost:3000'
-    ];
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+// Simple CORS configuration
+app.use(cors({
+  origin: 'https://anony-chat-one.vercel.app',
   credentials: true,
-  optionsSuccessStatus: 200
-};
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-// Apply CORS to all routes
-app.use(cors(corsOptions));
 app.use(express.json());
-
-// Handle preflight requests for all routes
-app.options('*', cors(corsOptions));
 
 const io = socketIo(server, {
   cors: {
-    origin: [
-      'https://anony-chat-one.vercel.app',
-      'http://localhost:5173',
-      'http://localhost:3000'
-    ],
+    origin: 'https://anony-chat-one.vercel.app',
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -59,11 +34,6 @@ const typingUsers = new Map();
 
 // Authentication endpoint
 app.post('/api/login', (req, res) => {
-  // Set CORS headers explicitly for this endpoint
-  res.header('Access-Control-Allow-Origin', 'https://anony-chat-one.vercel.app');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  
   const { passphrase } = req.body;
   
   if (!passphrase) {
@@ -88,26 +58,14 @@ app.post('/api/login', (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.header('Access-Control-Allow-Origin', 'https://anony-chat-one.vercel.app');
   res.json({ 
     status: 'ok', 
     message: 'Server is running',
-    connectedClients: connectedClients.size,
-    cors: 'Enabled for anony-chat-one.vercel.app'
+    connectedClients: connectedClients.size
   });
 });
 
-// Test endpoint to verify CORS
-app.get('/api/test-cors', (req, res) => {
-  res.header('Access-Control-Allow-Origin', 'https://anony-chat-one.vercel.app');
-  res.json({ 
-    message: 'CORS is working!',
-    timestamp: new Date().toISOString(),
-    allowedOrigin: 'https://anony-chat-one.vercel.app'
-  });
-});
-
-// Socket.IO connection handling
+// Socket.IO connection handling (same as above)
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
   
@@ -128,18 +86,12 @@ io.on('connection', (socket) => {
     timestamp: new Date().toISOString()
   });
 
-  // Handle chat messages
   socket.on('chat message', (data) => {
     try {
       const { message, alias, clientId } = data;
       
       if (!message || message.trim() === '') {
         socket.emit('error', { message: 'Message cannot be empty' });
-        return;
-      }
-
-      if (message.length > 1000) {
-        socket.emit('error', { message: 'Message too long' });
         return;
       }
 
@@ -159,7 +111,6 @@ io.on('connection', (socket) => {
       };
 
       io.emit('chat message', messageData);
-      console.log(`Message broadcast from ${messageData.alias}: ${messageData.message}`);
 
     } catch (error) {
       console.error('Error handling chat message:', error);
@@ -167,7 +118,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle typing indicators
   socket.on('typing', (data) => {
     const { isTyping, alias, clientId } = data;
     
@@ -184,7 +134,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Handle alias updates
   socket.on('update alias', (data) => {
     const client = connectedClients.get(socket.id);
     if (client) {
@@ -193,12 +142,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle disconnection
   socket.on('disconnect', (reason) => {
     console.log(`User disconnected: ${socket.id} - Reason: ${reason}`);
     
     typingUsers.delete(socket.id);
-    
     socket.broadcast.emit('user left', {
       id: socket.id,
       message: 'A user left the chat',
@@ -208,17 +155,12 @@ io.on('connection', (socket) => {
     connectedClients.delete(socket.id);
     io.emit('user count', connectedClients.size);
   });
-
-  socket.on('error', (error) => {
-    console.error(`Socket error for ${socket.id}:`, error);
-  });
 });
 
 // Start server
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔧 CORS enabled for: https://anony-chat-one.vercel.app`);
-  console.log(`🔐 Passphrase protection: ${CHAT_ROOM_PASSCODE !== 'secret123' ? 'Custom' : 'Default'}`);
 });
 
 process.on('SIGTERM', () => {

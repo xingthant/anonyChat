@@ -6,3 +6,4 @@ A secure, real-time anonymous chat application with password protection.
 - Password-protected rooms
 - Complete anonymity
 - No message persistence
+# anonyChat

@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: anonymous-chat-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CHAT_ROOM_PASSCODE
+        value: your-secret-password-123
+      - key: FRONTEND_URL
+        value: https://your-frontend-url.vercel.app
